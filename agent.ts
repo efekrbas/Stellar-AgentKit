@@ -5,7 +5,7 @@ import {
   getReserves as contractGetReserves,
   getShareId as contractGetShareId,
 } from "./lib/contract";
-import { bridgeTokenTool } from "./tools/bridge";
+import { bridgeTokenTool, TargetChain } from "./tools/bridge";
 import {
   Server,
   Keypair,
@@ -106,23 +106,29 @@ export class AgentClient {
   }
 
   /**
-   * Bridge tokens from Stellar to EVM compatible chains.
-   * 
+   * Bridge USDC from Stellar to an EVM-compatible chain.
+   *
    * ⚠️ IMPORTANT: Mainnet bridging requires BOTH:
    * 1. AgentClient initialized with allowMainnet: true
    * 2. ALLOW_MAINNET_BRIDGE=true in your .env file
-   * 
-   * This dual-safeguard approach prevents accidental mainnet bridging.
-   * 
+   *
+   * Supported target chains: "ethereum" | "polygon" | "arbitrum" | "base"
+   *
+   * @example
+   * await agent.bridge({ amount: "100", toAddress: "0x...", targetChain: "polygon" });
+   *
    * @param params Bridge parameters
-   * @returns Bridge transaction result with status, hash, and network
+   * @returns Bridge transaction result with status, hash, network, and targetChain
    */
   async bridge(params: {
     amount: string;
     toAddress: string;
+    targetChain?: TargetChain;
   }) {
     return await bridgeTokenTool.func({
-      ...params,
+      amount: params.amount,
+      toAddress: params.toAddress,
+      targetChain: params.targetChain ?? "ethereum",
       fromNetwork:
         this.network === "mainnet"
           ? "stellar-mainnet"
