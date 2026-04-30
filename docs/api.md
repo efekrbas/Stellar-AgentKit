@@ -1,116 +1,355 @@
-# Stellar AgentKit API Reference
+# 📘 AgentClient API Reference
 
-The `AgentClient` provides a unified interface for interacting with the Stellar blockchain, supporting swaps, cross-chain bridging, and liquidity pool operations.
+## Constructor
 
-## AgentClient
+### `new AgentClient(config)`
 
-### Constructor
+Creates a new AgentClient instance for interacting with the Stellar network.
 
-```typescript
-new AgentClient(config: AgentConfig)
-```
+#### Parameters
 
-**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `network` | `"testnet" \| "mainnet"` | ✅ | Network to connect to |
+| `allowMainnet` | `boolean` | ❌ | Required for mainnet execution (safety flag) |
+| `publicKey` | `string` | ❌ | Public key for operations (can use env var) |
 
-- `config.network`: `"testnet" | "mainnet"` - The Stellar network to connect to.
-- `config.publicKey`: `string` (optional) - The public key of the account performing operations. Defaults to `STELLAR_PUBLIC_KEY` environment variable.
-- `config.rpcUrl`: `string` (optional) - Custom RPC URL for Soroban interactions.
-
-**Example:**
+#### Example
 
 ```typescript
-import { AgentClient } from "stellartools";
-
+// Testnet usage (recommended for development)
 const agent = new AgentClient({
   network: "testnet",
+  publicKey: "GXXXX..."
+});
+
+// Mainnet usage (requires explicit opt-in)
+const agent = new AgentClient({
+  network: "mainnet",
+  allowMainnet: true,
+  publicKey: "GXXXX..."
 });
 ```
 
 ---
 
-### Methods
+## 🔄 swap()
 
-#### `swap(params)`
+Performs token swap on Stellar network using the configured liquidity pool.
 
-Performs a token swap using the liquidity contract.
+> **Note:** Swap and liquidity pool operations currently execute on the Stellar **testnet only**, using a testnet RPC URL and passphrase, regardless of the `AgentClient`’s `network` or `rpcUrl` settings. Do not treat these methods as mainnet‑ready.
+#### Parameters
 
-**Parameters:**
+```typescript
+{
+  to: string;      // Recipient address
+  buyA: boolean;   // Swap direction (true = buy asset A, false = buy asset B)
+  out: string;     // Expected output amount
+  inMax: string;   // Maximum input amount willing to pay
+}
+```
 
-- `params.to`: `string` - Destination address for the swapped tokens.
-- `params.buyA`: `boolean` - `true` to buy asset A, `false` to buy asset B.
-- `params.out`: `string` - Amount of output tokens.
-- `params.inMax`: `string` - Maximum amount of input tokens allowed.
+#### Returns
 
-**Returns:** `Promise<any>`
+`Promise<void>` - Resolves when the swap transaction has been submitted to the Stellar network
 
-**Example:**
+#### Example
 
 ```typescript
 await agent.swap({
-  to: "GB...",
+  to: "GXXXX...",
   buyA: true,
   out: "100",
-  inMax: "110",
-});
-```
-
-#### `bridge(params)`
-
-Bridges tokens from Stellar to EVM-compatible chains using Allbridge.
-
-**Parameters:**
-
-- `params.amount`: `string` - Amount of tokens to bridge.
-- `params.toAddress`: `string` - Destination address on the target chain (e.g., ETH address).
-
-**Returns:** `Promise<any>`
-
-**Example:**
-
-```typescript
-await agent.bridge({
-  amount: "50",
-  toAddress: "0x123...",
+  inMax: "110"
 });
 ```
 
 ---
 
-### Liquidity Pool (LP) Operations
+## 🧭 dex.quoteSwap()
 
-Accessed via `agent.lp`.
+Quotes Stellar Classic swap routes using Horizon path discovery. This can return
+routes that traverse the SDEX and/or Stellar built-in liquidity pools.
 
-#### `agent.lp.deposit(params)`
+The public `limit` controls how many ranked quotes are returned to the caller.
+The SDK may fetch a larger fixed candidate window from Horizon internally before
+ranking and slicing the final response.
 
-Deposits assets into the liquidity pool.
+#### Parameters
 
-**Parameters:**
+```typescript
+{
+  mode: "strict-send" | "strict-receive";
+  sendAsset: { type: "native" } | { code: string; issuer: string };
+  destAsset: { type: "native" } | { code: string; issuer: string };
+  sendAmount?: string;   // Required for strict-send
+  destAmount?: string;   // Required for strict-receive
+  destination?: string;  // Defaults to the configured public key
+  limit?: number;        // Defaults to 5
+}
+```
 
-- `params.to`: `string` - Address to receive the LP shares.
-- `params.desiredA`: `string` - Desired amount of asset A.
-- `params.minA`: `string` - Minimum amount of asset A.
-- `params.desiredB`: `string` - Desired amount of asset B.
-- `params.minB`: `string` - Minimum amount of asset B.
+#### Returns
 
-#### `agent.lp.withdraw(params)`
+```typescript
+Promise<Array<{
+  path: Array<{ type: "native" } | { code: string; issuer: string }>;
+  sendAmount: string;
+  destAmount: string;
+  estimatedPrice: string;
+  hopCount: number;
+  raw: object;
+}>>
+```
 
-Withdraws assets from the liquidity pool.
+#### Example
 
-**Parameters:**
+```typescript
+const quotes = await agent.dex.quoteSwap({
+  mode: "strict-send",
+  sendAsset: { code: "USDC", issuer: "G..." },
+  destAsset: { code: "EURC", issuer: "G..." },
+  sendAmount: "25.0000000"
+});
+```
 
-- `params.to`: `string` - Address to receive the withdrawn assets.
-- `params.shareAmount`: `string` - Amount of LP shares to burn.
-- `params.minA`: `string` - Minimum amount of asset A to receive.
-- `params.minB`: `string` - Minimum amount of asset B to receive.
+---
 
-#### `agent.lp.getReserves()`
+## 🧭 dex.swapBestRoute()
 
-Returns the current reserves of the liquidity pool.
+Executes the top-ranked route returned by Stellar Classic pathfinding.
 
-**Returns:** `Promise<[bigint, bigint]>`
+> **Signer requirement:** `STELLAR_PRIVATE_KEY` must correspond to the same
+> account as the configured `publicKey`, or execution fails before submission.
 
-#### `agent.lp.getShareId()`
+#### Parameters
 
-Returns the share ID of the liquidity pool.
+```typescript
+{
+  mode: "strict-send" | "strict-receive";
+  sendAsset: { type: "native" } | { code: string; issuer: string };
+  destAsset: { type: "native" } | { code: string; issuer: string };
+  sendAmount?: string;   // Required for strict-send
+  destAmount?: string;   // Required for strict-receive
+  destination?: string;  // Defaults to the configured public key
+  slippageBps?: number;  // Defaults to 100
+}
+```
 
-**Returns:** `Promise<string>`
+#### Returns
+
+```typescript
+Promise<{
+  hash: string;
+  mode: "strict-send" | "strict-receive";
+  sendAmount: string;
+  destAmount: string;
+  path: Array<{ type: "native" } | { code: string; issuer: string }>;
+}>
+```
+
+#### Example
+
+```typescript
+const result = await agent.dex.swapBestRoute({
+  mode: "strict-receive",
+  sendAsset: { code: "USDC", issuer: "G..." },
+  destAsset: { code: "EURC", issuer: "G..." },
+  destAmount: "20.0000000",
+  slippageBps: 100
+});
+```
+
+---
+
+## 🌉 bridge()
+
+Performs cross-chain bridge operation from Stellar to EVM compatible chains.
+
+⚠️ **IMPORTANT**: Mainnet bridging requires BOTH:
+1. AgentClient initialized with `allowMainnet: true`
+2. `ALLOW_MAINNET_BRIDGE=true` in your .env file
+
+#### Parameters
+
+```typescript
+{
+  amount: string;     // Amount to bridge
+  toAddress: string;  // EVM destination address
+}
+```
+
+#### Returns
+
+```typescript
+Promise<{
+  status: string;
+  hash: string;
+  network: string;
+  asset?: string;  // Present for completed/settled bridge operations
+  amount?: string; // Present for completed/settled bridge operations
+}>
+```
+
+#### Example
+
+```typescript
+await agent.bridge({
+  amount: "100",
+  toAddress: "0x742d35Cc6Db050e3797bf604dC8a98c13a0e002E"
+});
+```
+
+---
+
+## 💧 Liquidity Pool Methods
+
+These are the existing Soroban single-pool LP helpers. They are separate from
+the new Classic DEX route optimizer under `agent.dex.*`.
+
+### `lp.deposit()`
+
+Adds liquidity to the pool by providing both assets.
+
+#### Parameters
+
+```typescript
+{
+  to: string;        // Recipient address
+  desiredA: string;  // Desired amount of asset A
+  minA: string;      // Minimum amount of asset A
+  desiredB: string;  // Desired amount of asset B
+  minB: string;      // Minimum amount of asset B
+}
+```
+
+#### Returns
+
+`Promise<void>` - Resolves when the deposit transaction has been submitted
+
+#### Example
+
+```typescript
+await agent.lp.deposit({
+  to: "GXXXX...",
+  desiredA: "1000",
+  minA: "950",
+  desiredB: "1000",
+  minB: "950"
+});
+```
+
+### `lp.withdraw()`
+
+Removes liquidity from the pool by burning share tokens.
+
+#### Parameters
+
+```typescript
+{
+  to: string;          // Recipient address
+  shareAmount: string; // Amount of share tokens to burn
+  minA: string;        // Minimum amount of asset A to receive
+  minB: string;        // Minimum amount of asset B to receive
+}
+```
+
+#### Returns
+
+`Promise<readonly [BigInt, BigInt] | null>` - Array of withdrawn amounts [assetA, assetB]
+
+#### Example
+
+```typescript
+const result = await agent.lp.withdraw({
+  to: "GXXXX...",
+  shareAmount: "100",
+  minA: "95",
+  minB: "95"
+});
+```
+
+### `lp.getReserves()`
+
+Returns current pool reserves for both assets.
+
+#### Parameters
+
+None
+
+#### Returns
+
+`Promise<readonly [BigInt, BigInt] | null>` - Array of reserve amounts [reserveA, reserveB]
+
+#### Example
+
+```typescript
+const reserves = await agent.lp.getReserves();
+console.log(`Reserve A: ${reserves[0]}, Reserve B: ${reserves[1]}`);
+```
+
+### `lp.getShareId()`
+
+Returns the pool share token ID.
+
+#### Parameters
+
+None
+
+#### Returns
+
+`Promise<string | null>` - Share token contract ID
+
+#### Example
+
+```typescript
+const shareId = await agent.lp.getShareId();
+console.log(`Share Token ID: ${shareId}`);
+```
+
+---
+
+## 🚨 Error Handling
+
+All methods may throw errors in the following scenarios:
+
+- **Network errors**: Connection issues with Stellar RPC
+- **Transaction failures**: Insufficient balance, slippage exceeded
+- **Invalid parameters**: Malformed addresses, negative amounts
+- **Mainnet safety**: Attempting mainnet operations without proper flags
+
+#### Example Error Handling
+
+```typescript
+try {
+  await agent.swap({
+    to: "GXXXX...",
+    buyA: true,
+    out: "100",
+    inMax: "110"
+  });
+} catch (error) {
+  console.error("Swap failed:", error.message);
+}
+```
+
+---
+
+## 📋 Type Definitions
+
+```typescript
+interface AgentConfig {
+  network: "testnet" | "mainnet";
+  rpcUrl?: string;
+  publicKey?: string;
+  allowMainnet?: boolean;
+}
+```
+
+---
+
+## 🔗 Related Resources
+
+- [Stellar SDK Documentation](https://stellar.github.io/js-stellar-sdk/)
+- [Soroban Smart Contract Docs](https://soroban.stellar.org/docs)
+- [Stellar Network Overview](https://developers.stellar.org/docs/fundamentals/stellar-data-structures/accounts)
