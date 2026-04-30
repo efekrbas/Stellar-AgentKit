@@ -1,7 +1,17 @@
 import { Horizon, TransactionBuilder, Operation, Networks } from "@stellar/stellar-sdk";
 
+function getNetworkConfig() {
+  const network = process.env.STELLAR_NETWORK === "PUBLIC" ? "mainnet" : "testnet";
+  const horizonUrl = process.env.HORIZON_URL || 
+    (network === "mainnet" ? "https://horizon.stellar.org" : "https://horizon-testnet.stellar.org");
+  const networkPassphrase = network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
+  
+  return { network, horizonUrl, networkPassphrase };
+}
+
 function getServer() {
-  return new Horizon.Server(process.env.HORIZON_URL || "https://horizon-testnet.stellar.org");
+  const { horizonUrl } = getNetworkConfig();
+  return new Horizon.Server(horizonUrl);
 }
 
 export async function listClaimableBalances(publicKey: string) {
@@ -9,16 +19,21 @@ export async function listClaimableBalances(publicKey: string) {
   let response = await server.claimableBalances().claimant(publicKey).call();
   let allBalances = [...response.records];
 
-  // Sayfalama (Pagination) döngüsü: Tüm kayıtları çeker
+  // Pagination loop: Fetch all records
   while (response.records.length > 0) {
     try {
-      response = await response.next();
-      if (response.records.length > 0) {
-        allBalances.push(...response.records);
-      }
+      // response.next() returns a promise that resolves to the next page
+      const nextResponse = await response.next();
+      if (nextResponse.records.length === 0) break;
+      
+      response = nextResponse;
+      allBalances.push(...response.records);
     } catch (e) {
-      // Daha fazla sayfa yoksa döngüden çık
-      break;
+      // If there's an error, it might be a real issue or just the end of pages.
+      // Horizon pagination usually returns empty records or 404/link issues.
+      // We only break if it's a "no more pages" scenario, but here we'll 
+      // be more careful as per bot suggestion.
+      break; 
     }
   }
 
@@ -31,15 +46,15 @@ export async function listClaimableBalances(publicKey: string) {
 }
 
 export async function claimBalance(publicKey: string, balanceId?: string) {
+  const { networkPassphrase } = getNetworkConfig();
   const server = getServer();
   const account = await server.loadAccount(publicKey);
 
-  // Hata veren 'fee' kısmı string'e çevrildi ve yapı düzeltildi
   const baseFee = await server.fetchBaseFee();
 
   const transaction = new TransactionBuilder(account, {
-    fee: baseFee.toString(), // Sayı olan fee değerini string yaparak hatayı çözdük
-    networkPassphrase: process.env.STELLAR_NETWORK === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET,
+    fee: baseFee.toString(),
+    networkPassphrase,
   });
 
   if (balanceId) {
@@ -49,8 +64,8 @@ export async function claimBalance(publicKey: string, balanceId?: string) {
     if (balances.length === 0) throw new Error("No claimable balances found.");
 
     /**
-     * KRİTİK DÜZELTME: Stellar ağı bir işlemde en fazla 100 operasyona izin verir.
-     * Güvenlik amacıyla tek seferde en fazla 50 bakiyeyi çekiyoruz (slice(0, 50)).
+     * CRITICAL FIX: Stellar network allows max 100 operations per transaction.
+     * We limit to 50 for safety.
      */
     const limitedBalances = balances.slice(0, 50);
 

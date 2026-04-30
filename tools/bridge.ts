@@ -169,6 +169,7 @@ export const bridgeTokenTool = new DynamicStructuredTool({
           status: "pending_restore",
           hash: sentRestoreXdrTx.hash,
           network: fromNetwork,
+          targetChain,
         };
       }
 
@@ -193,6 +194,7 @@ export const bridgeTokenTool = new DynamicStructuredTool({
         status: "pending",
         hash: sent.hash,
         network: fromNetwork,
+        targetChain,
       };
     }
 
@@ -236,6 +238,7 @@ export const bridgeTokenTool = new DynamicStructuredTool({
         status: "trustline_submitted",
         hash: submit.hash,
         network: fromNetwork,
+        targetChain,
       };
     }
 
@@ -243,6 +246,7 @@ export const bridgeTokenTool = new DynamicStructuredTool({
       status: "confirmed",
       hash: sent.hash,
       network: fromNetwork,
+      targetChain,
       asset: sourceToken.symbol,
       amount,
     };

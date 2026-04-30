@@ -5,11 +5,15 @@ import {
   deposit,
   withdraw,
   getReserves,
+  swap as contractSwap,
 } from "../lib/contract";
 
 const STELLAR_PUBLIC_KEY = process.env.STELLAR_PUBLIC_KEY || "";
 const STELLAR_NETWORK = (process.env.STELLAR_NETWORK?.toLowerCase() || "testnet") as "testnet" | "mainnet";
-const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
+const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL || 
+  (STELLAR_NETWORK === "mainnet" 
+    ? "https://soroban-mainnet.stellar.org" 
+    : "https://soroban-testnet.stellar.org");
 
 export const StellarLiquidityContractTool = new DynamicStructuredTool({
   name: "stellar_liquidity_contract_tool",
@@ -65,8 +69,8 @@ export const StellarLiquidityContractTool = new DynamicStructuredTool({
           if (!to || buyA === undefined || !out || !inMax) {
             throw new Error("to, buyA, out, and inMax are required for swap");
           }
-          // Note: Full swap logic should be implemented in lib/contract if needed.
-          return "Swap functionality is currently a placeholder in this tool.";
+          const result = await contractSwap(STELLAR_PUBLIC_KEY, to, buyA, out, inMax, config);
+          return result ?? `Swapped successfully for ${to}.`;
         }
         case "withdraw": {
           if (!to || !shareAmount || !minA || !minB) {

@@ -2,12 +2,6 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { listClaimableBalances, claimBalance } from "../lib/claimF";
 
-const STELLAR_PUBLIC_KEY = process.env.STELLAR_PUBLIC_KEY!;
-
-if (!STELLAR_PUBLIC_KEY) {
-  throw new Error("Missing Stellar environment variables");
-}
-
 export const StellarClaimBalanceTool = new DynamicStructuredTool({
   name: "stellar_claim_balance_tool",
   description:
@@ -17,6 +11,12 @@ export const StellarClaimBalanceTool = new DynamicStructuredTool({
     balanceId: z.string().optional(), // Optional: if provided, claims a specific ID; otherwise claims all.
   }),
   func: async ({ action, balanceId }: { action: "list" | "claim"; balanceId?: string }) => {
+    const STELLAR_PUBLIC_KEY = process.env.STELLAR_PUBLIC_KEY;
+
+    if (!STELLAR_PUBLIC_KEY) {
+      throw new Error("Missing STELLAR_PUBLIC_KEY environment variable");
+    }
+
     try {
       switch (action) {
         case "list": {

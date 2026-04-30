@@ -10,7 +10,10 @@ import {
 
 const STELLAR_PUBLIC_KEY = process.env.STELLAR_PUBLIC_KEY || "";
 const STELLAR_NETWORK = (process.env.STELLAR_NETWORK?.toLowerCase() || "testnet") as "testnet" | "mainnet";
-const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
+const SOROBAN_RPC_URL = process.env.SOROBAN_RPC_URL || 
+  (STELLAR_NETWORK === "mainnet" 
+    ? "https://soroban-mainnet.stellar.org" 
+    : "https://soroban-testnet.stellar.org");
 
 export const StellarContractTool = new DynamicStructuredTool({
   name: "stellar_contract_tool",
